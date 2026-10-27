@@ -3107,12 +3107,19 @@ static void WriteBuffer(const FunctionCallbackInfo<Value>& args) {
   CHECK(IsSafeJsInt(args[2]));
   const int64_t off_64 = args[2].As<Integer>()->Value();
   CHECK_GE(off_64, 0);
-  CHECK_LE(static_cast<uint64_t>(off_64), buffer_length);
+  // The JS layer validates offset and length against `buffer.byteLength`,
+  // which is an own property that user code can shadow. Validate against the
+  // real length here and throw instead of aborting the process.
+  if (static_cast<uint64_t>(off_64) > buffer_length) {
+    return THROW_ERR_OUT_OF_RANGE(env, "offset is out of bounds");
+  }
   const size_t off = static_cast<size_t>(off_64);
 
   CHECK(args[3]->IsInt32());
   const size_t len = static_cast<size_t>(args[3].As<Int32>()->Value());
-  CHECK(Buffer::IsWithinBounds(off, len, buffer_length));
+  if (!Buffer::IsWithinBounds(off, len, buffer_length)) {
+    return THROW_ERR_OUT_OF_RANGE(env, "length is out of bounds");
+  }
   CHECK_LE(len, buffer_length);
   CHECK_GE(off + len, off);
 
@@ -3434,12 +3441,17 @@ static void Read(const FunctionCallbackInfo<Value>& args) {
   CHECK(IsSafeJsInt(args[2]));
   const int64_t off_64 = args[2].As<Integer>()->Value();
   CHECK_GE(off_64, 0);
-  CHECK_LT(static_cast<uint64_t>(off_64), buffer_length);
+  // See WriteBuffer(): `buffer.byteLength` can be shadowed by user code.
+  if (static_cast<uint64_t>(off_64) >= buffer_length) {
+    return THROW_ERR_OUT_OF_RANGE(env, "offset is out of bounds");
+  }
   const size_t off = static_cast<size_t>(off_64);
 
   CHECK(args[3]->IsInt32());
   const size_t len = static_cast<size_t>(args[3].As<Int32>()->Value());
-  CHECK(Buffer::IsWithinBounds(off, len, buffer_length));
+  if (!Buffer::IsWithinBounds(off, len, buffer_length)) {
+    return THROW_ERR_OUT_OF_RANGE(env, "length is out of bounds");
+  }
 
   CHECK(IsSafeJsInt(args[4]) || args[4]->IsBigInt());
   const int64_t pos = args[4]->IsNumber() ? args[4].As<Integer>()->Value()
